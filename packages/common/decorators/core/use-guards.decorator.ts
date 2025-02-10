@@ -1,33 +1,27 @@
-import { GUARDS_METADATA } from '../../constants';
-import { CanActivate } from '../../interfaces';
-import { extendArrayMetadata } from '../../utils/extend-metadata.util';
-import { isFunction } from '../../utils/shared.utils';
+import { CanActivate } from '@nestjs/common';
+import { isFunction, isObject } from '../../utils/shared.utils';
 import { validateEach } from '../../utils/validate-each.util';
+import { extendArrayMetadata } from '../../utils/extend-metadata.util';
+import { GUARDS_METADATA, GUARDS_OPTION_METADATA } from '../../constants';
 
-/**
- * Decorator that binds guards to the scope of the controller or method,
- * depending on its context.
- *
- * When `@UseGuards` is used at the controller level, the guard will be
- * applied to every handler (method) in the controller.
- *
- * When `@UseGuards` is used at the individual handler level, the guard
- * will apply only to that specific method.
- *
- * @param guards a single guard instance or class, or a list of guard instances
- * or classes.
- *
- * @see [Guards](https://docs.nestjs.com/guards)
- *
- * @usageNotes
- * Guards can also be set up globally for all controllers and routes
- * using `app.useGlobalGuards()`.  [See here for details](https://docs.nestjs.com/guards#binding-guards)
- *
- * @publicApi
- */
+export interface UseGuardsOptions {
+  parallel?: boolean;
+}
+
 export function UseGuards(
-  ...guards: (CanActivate | Function)[]
+  ...args: (CanActivate | Function | UseGuardsOptions)[]
 ): MethodDecorator & ClassDecorator {
+  let options: UseGuardsOptions = { parallel: false };
+
+  if (
+    args.length > 0 &&
+    isObject(args[args.length - 1]) &&
+    ('parallel' in args[args.length - 1])
+  ) {
+    options = args.pop() as UseGuardsOptions;
+  }
+  const guards = args as (CanActivate | Function)[];
+
   return (
     target: any,
     key?: string | symbol,
@@ -45,10 +39,12 @@ export function UseGuards(
         'guard',
       );
       extendArrayMetadata(GUARDS_METADATA, guards, descriptor.value);
+      if(options.parallel) extendArrayMetadata(GUARDS_OPTION_METADATA, [options.parallel], target);
       return descriptor;
     }
     validateEach(target, guards, isGuardValid, '@UseGuards', 'guard');
     extendArrayMetadata(GUARDS_METADATA, guards, target);
+    if(options.parallel) extendArrayMetadata(GUARDS_OPTION_METADATA, [options.parallel], target);
     return target;
   };
 }
