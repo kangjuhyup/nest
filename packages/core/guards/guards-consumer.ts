@@ -3,6 +3,7 @@ import { ContextType, Controller } from '@nestjs/common/interfaces';
 import { isEmpty } from '@nestjs/common/utils/shared.utils';
 import { lastValueFrom, Observable } from 'rxjs';
 import { ExecutionContextHost } from '../helpers/execution-context-host';
+import { GUARDS_OPTION_METADATA } from '@nestjs/common/constants';
 
 export class GuardsConsumer {
   public async tryActivate<TContext extends string = ContextType>(
@@ -17,15 +18,25 @@ export class GuardsConsumer {
     }
     const context = this.createContext(args, instance, callback);
     context.setType<TContext>(type!);
-
-    for (const guard of guards) {
-      const result = guard.canActivate(context);
-      if (await this.pickResult(result)) {
-        continue;
+  
+    // callback 은 metadata 가 저장된 타겟
+    const parallel: boolean = Reflect.getMetadata(GUARDS_OPTION_METADATA, callback) ?? false;
+  
+    if (parallel) {
+      const results = await Promise.all(
+        guards.map((guard) => this.pickResult(guard.canActivate(context)))
+      );
+      return results.every((result) => result === true);
+    } else {
+      for (const guard of guards) {
+        const result = guard.canActivate(context);
+        if (await this.pickResult(result)) {
+          continue;
+        }
+        return false;
       }
-      return false;
+      return true;
     }
-    return true;
   }
 
   public createContext(
